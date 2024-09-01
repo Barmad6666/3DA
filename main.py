@@ -12,30 +12,6 @@ quarts=load_texture('pics/Quarts.png')
 oak_plank=load_texture('pics/oak plank.jpg')
 brich_log=load_texture('pics/brich log.png')
 # Define a basic block class
-class MovingBlock(Entity):
-    def __init__(self, position=(-10, 2, 4), texture=grass):
-        super().__init__(
-            position=position,
-            model='cube',
-            origin_y=0.5,
-            texture=texture,
-            color=color.color(0, 0, random.uniform(0.9, 1.0)),
-            scale=1.0,
-            collider='box'  # Add a collider to the block
-        )
-        self.speed = 0.1  # Increase the speed to 0.1
-        self.forward_vector = Vec3(1, 0, 0)  # Initial forward direction
-
-    def update(self):
-        # Move the block forward at the increased speed
-        self.position += self.forward_vector * self.speed
-
-        # Add logic to change the forward direction if needed
-        # For example, to make it move along the X-axis, you can use:
-        # self.forward_vector = Vec3(1, 0, 0)
-        # To move along the Z-axis, use:
-        # self.forward_vector = Vec3(0, 0, 1)
-
 class Inventory(Entity):
 
     def __init__(self,position=(-.8,-.3),texture=grass, ):
@@ -62,8 +38,7 @@ i3 = Inventory((-.4,-.3),dirt)
 i4 = Inventory((-.2,-.3),oak_log)   
 i5 = Inventory((-.0,-.3),oak_plank)   
 i6 = Inventory((.2,-.3),quarts)   
-
-i7 = Inventory((.6,-.3),brich_log)  
+i7 = Inventory((.4,-.3),brich_log)  
 
 class Block(Entity):
     def __init__(self, position=(0, 0, 0), texture=grass):
@@ -80,28 +55,44 @@ class Block(Entity):
     def input(self, key):
         if self.hovered:
             if key == 'left mouse down':
-                if block_num==1: create_grass_block(self.position + mouse.normal, grass)
-                if block_num==2: create_grass_block(self.position + mouse.normal, clobbestone)
-                if block_num==3: create_grass_block(self.position + mouse.normal, dirt)
-                if block_num==4: create_grass_block(self.position + mouse.normal, oak_log)
-                if block_num==5: create_grass_block(self.position + mouse.normal, oak_plank)
-                if block_num==6: create_grass_block(self.position + mouse.normal, quarts)
-                if block_num==7: create_grass_block(self.position + mouse.normal, brich_log)
-            
+                if block_num==1: create_grass_block(self.position + mouse.normal, grass, e)
+                if block_num==2: create_grass_block(self.position + mouse.normal, clobbestone, e)
+                if block_num==3: create_grass_block(self.position + mouse.normal, dirt, e)
+                if block_num==4: create_grass_block(self.position + mouse.normal, oak_log, e)
+                if block_num==5: create_grass_block(self.position + mouse.normal, oak_plank, e)
+                if block_num==6: create_grass_block(self.position + mouse.normal, quarts, e)
+                if block_num==7: create_grass_block(self.position + mouse.normal, brich_log, e)
             if key == 'right mouse down':
+                block_data = {
+                "position": tuple(self.position),
+                "texture": self.texture.name
+                }
+                mycol.delete_one(block_data)            
                 destroy(self)
-                mycol.delete_one(self.__dict__)
-def create_grass_block(position, bl):
+
+def create_grass_block(position, bl,e):
     grass_block = Block(position=position, texture=bl)
     blocks.append(grass_block)
-    mycol.insert_one(grass_block.__dict__)
+    if not e:
+        bb={
+            "position":tuple(grass_block.position),
+            "texture":grass_block.texture.name
+        }
+        mycol.insert_one(bb)
+    else:
+        return
+
 # Create a grid of blocks
 blocks = []
-
+e=False
+for i in mycol.find():
+    create_grass_block(i["position"], i["texture"], e)
+    if -16<= i["position"][0] <= 16 and i["position"][1]==0 and -16<= i["position"][2] <= 16 :
+        e=True
 for x in range(-16, 16):
     for z in range(-16, 16):
-        create_grass_block((x, 0, z),grass)
-
+        create_grass_block((x, 0, z),grass, e)
+e=False
 
 # Define chunk size and generate chunks
 chunk_size = 16
@@ -124,13 +115,14 @@ def remove_distant_chunks(player_position, max_distance):
                 destroy(block)
             del chunks[chunk_position]
 
-# Import FirstPersonController from Ursina
+
 from ursina.prefabs.first_person_controller import FirstPersonController
 
 # Create a player character using FirstPersonController
 player = FirstPersonController()
 block_list=[]
 # Set the respawn threshold
+ggggg=player.gravity
 respawn_threshold = -20  # Adjust this value as needed
 block_num=1
 
@@ -161,7 +153,12 @@ def update():
     if held_keys['7']:
         block_num=7 
         print_on_screen(text="brich log",position=(-.1,-.1),scale=3)
-
+    
+    if held_keys["q"]:
+        player.gravity=0
+        
+    if held_keys["e"]:
+        player.gravity=ggggg
     # ==================
     if held_keys['escape']:
         application.quit()
@@ -171,7 +168,6 @@ def update():
     player_chunk = (int(player_position.x // chunk_size) * chunk_size, int(player_position.z // chunk_size) * chunk_size)
     if player_chunk not in chunks:
         generate_chunk(player_chunk)
-    remove_distant_chunks(player_position, max_distance)
     if player_position.y < respawn_threshold:
         # Respawn the player randomly within the terrain area
         player.position = Vec3(random.randint(-16, 16), 10, random.randint(-16, 16))
