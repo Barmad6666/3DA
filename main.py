@@ -1,17 +1,16 @@
-from ursina import *
-import pymongo
+from ursina import Entity,Ursina,load_texture,camera,random,mouse,Sky,color,destroy,Vec3,held_keys,application,print_on_screen
+from pymongo import MongoClient
 app = Ursina() 
-myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+myclient = MongoClient("mongodb://localhost:27017/")
 mydb = myclient["3DA_db"]
 mycol = mydb["blocks"]
-clobbestone=load_texture('pics/brick2_texture.jpg')
-grass= load_texture('pics/grass_texture.jpg')
-dirt= load_texture("pics/dirt.jpg")
-oak_log=load_texture('pics/wood.jpg')
+clobbestone=load_texture('pics/brick2_texture.png')
+grass= load_texture('pics/grass_texture.png')
+dirt= load_texture("pics/dirt.png")
+oak_log=load_texture('pics/wood.png')
 quarts=load_texture('pics/Quarts.png')
-oak_plank=load_texture('pics/oak plank.jpg')
+oak_plank=load_texture('pics/oak plank.png')
 brich_log=load_texture('pics/brich log.png')
-# Define a basic block class
 class Inventory(Entity):
 
     def __init__(self,position=(-.8,-.3),texture=grass, ):
@@ -49,7 +48,7 @@ class Block(Entity):
             texture=texture,
             color=color.color(0, 0, random.uniform(0.9, 1.0)),
             scale=1.0,
-            collider='box'  # Add a collider to the block
+            collider='box' 
         )
 
     def input(self, key):
@@ -82,7 +81,7 @@ def create_grass_block(position, bl,e):
     else:
         return
 
-# Create a grid of blocks
+
 blocks = []
 e=False
 for i in mycol.find():
@@ -94,36 +93,53 @@ for x in range(-16, 16):
         create_grass_block((x, 0, z),grass, e)
 e=False
 
-# Define chunk size and generate chunks
+
 chunk_size = 16
 chunks = {}
+
+
+
+def remove_distant_chunks(player_position, max_distance):
+    chunks_to_remove = []
+    
+    for chunk_position, chunk_blocks in list(chunks.items()):
+        chunk_center = Vec3(chunk_position[0] + chunk_size / 2, 0, chunk_position[1] + chunk_size / 2)
+        distance = player_position - chunk_center
+        
+        if distance.length() > max_distance:
+            print(f"Removing chunk at {chunk_position}, distance: {distance.length()}")  # Debug output
+            chunks_to_remove.append(chunk_position)
+    
+    for chunk_position in chunks_to_remove:
+        chunk_blocks = chunks.pop(chunk_position)
+        for block in chunk_blocks:
+            block_data = {
+                "position": tuple(block.position),
+                "texture": block.texture.name
+            }
+            # Debugging output
+            print(f"Deleting block at {block.position} from database.")
+            result = mycol.delete_one(block_data)
+            print(f"Deleted {result.deleted_count} block(s) from database.")
+            destroy(block)
 
 def generate_chunk(position):
     chunk_blocks = []
     for x in range(position[0], position[0] + chunk_size):
         for z in range(position[1], position[1] + chunk_size):
-            block = Block(position=(x, 0, z), texture=grass)
-            chunk_blocks.append(block)
+            existing_block = mycol.find_one({"position": (x, 0, z)})
+            if existing_block:
+                create_grass_block((x, 0, z), load_texture(existing_block["texture"]), e)
+            else:
+                create_grass_block((x, 0, z), grass, e)
     chunks[position] = chunk_blocks
-
-def remove_distant_chunks(player_position, max_distance):
-    for chunk_position, chunk_blocks in list(chunks.items()):
-        chunk_center = Vec3(chunk_position[0] + chunk_size / 2, 0, chunk_position[1] + chunk_size / 2)
-        distance = player_position - chunk_center
-        if distance.length() > max_distance:
-            for block in chunk_blocks:
-                destroy(block)
-            del chunks[chunk_position]
-
-
 from ursina.prefabs.first_person_controller import FirstPersonController
 
-# Create a player character using FirstPersonController
 player = FirstPersonController()
 block_list=[]
-# Set the respawn threshold
+
 ggggg=player.gravity
-respawn_threshold = -20  # Adjust this value as needed
+respawn_threshold = -20  
 block_num=1
 
 
@@ -164,14 +180,10 @@ def update():
         application.quit()
 
     player_position = player.position
-    max_distance = 32  # Adjust the maximum distance for block removal as needed
+    max_distance = 32  
     player_chunk = (int(player_position.x // chunk_size) * chunk_size, int(player_position.z // chunk_size) * chunk_size)
     if player_chunk not in chunks:
         generate_chunk(player_chunk)
     if player_position.y < respawn_threshold:
-        # Respawn the player randomly within the terrain area
         player.position = Vec3(random.randint(-16, 16), 10, random.randint(-16, 16))
-    # moving_block.update()
-    
-    
 app.run()
